@@ -1,0 +1,80 @@
+version: "3.9"
+
+services:
+  elasticsearch:
+    container_name: elasticsearch
+    image: elasticsearch:8.11.3
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=-Xms2g -Xmx2g
+      - xpack.security.enrollment.enabled=false
+    deploy:
+      resources:
+        limits:
+          cpus: '0.70'
+          memory: 3g
+        reservations:
+          cpus: '0.5'
+          memory: 2g
+    healthcheck:
+      test: [ "CMD-SHELL", "curl --no-verbose http://elasticsearch:9200/_cluster/health?pretty || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  kibana:
+    image: kibana:8.11.3
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    restart: unless-stopped
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  fluentbit:
+    image: fluent/fluent-bit:2.2.1-amd64
+    container_name: fluentbit
+    ports:
+      - "24224:24224"
+    volumes:
+      - ./fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+    restart: unless-stopped
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  ubuntu:
+    image: ubuntu:22.04
+    container_name: test1
+    command: [/bin/echo, "Random log 1"]
+    depends_on:
+      - fluentbit
+    logging:
+      driver: fluentd
+      options:
+        # fluentd-address: fluentbit:24224
+        fluentd-async-connect: "true"
+        env: ubuntu1
+        tag: service1
+
+  ubuntu2:
+    image: ubuntu:22.04
+    container_name: test2
+    command: [/bin/echo, "Random log 2"]
+    depends_on:
+      - fluentbit
+    logging:
+      driver: fluentd
+      options:
+        # fluentd-address: fluentbit:24224
+        fluentd-async-connect: "true"
+        tag: service2
